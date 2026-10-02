@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "usernamechanger",
+	"version": "${version}",
+	"name": "Username Changer",
+	"description": "Persistent server-side nicknames for chat, tab, nametags and command targets.",
+	"authors": [
+		"Admin"
+	],
+	"license": "MIT",
+	"icon": "assets/usernamechanger/logo.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"adminvvv.usernamechanger.Usernamechanger"
+		]
+	},
+	"mixins": [
+		"usernamechanger.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": ">=26.1 <26.4",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

@@ -1,0 +1,123 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+repositories {
+	exclusiveContent {
+		forRepository { mavenCentral() }
+		filter { includeGroup 'net.luckperms' }
+	}
+}
+
+sourceSets {
+	gametest {
+		compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+		runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+	}
+}
+
+configurations {
+	gametestImplementation.extendsFrom implementation
+	gametestRuntimeOnly.extendsFrom runtimeOnly
+}
+
+loom {
+	mods {
+		usernamechanger { sourceSet sourceSets.main }
+		usernamechanger_test { sourceSet sourceSets.gametest }
+	}
+	runs {
+		gametest {
+			server()
+			name 'Nickname integration tests'
+			source sourceSets.gametest
+			vmArg '-Dfabric-api.gametest'
+			runDir "build/gametest-run/${project.minecraft_version}"
+		}
+	}
+}
+
+dependencies {
+	// To change the versions see the gradle.properties file
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	compileOnly 'net.luckperms:api:5.5'
+	testImplementation 'net.luckperms:api:5.5'
+	testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+}
+
+test {
+	useJUnitPlatform()
+	systemProperty 'fabric.side', 'server'
+}
+
+tasks.register('clientLoadTest', Test) {
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform()
+	include '**/MixinCompatibilityTest.class'
+	systemProperty 'fabric.side', 'client'
+}
+
+check.dependsOn tasks.named('clientLoadTest')
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+	exclude 'assets/usernamechanger/icon.png'
+	from('logo.png') {
+		into 'assets/usernamechanger'
+		rename { 'logo.png' }
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+}
+
+java {
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+tasks.named('sourcesJar') {
+	exclude 'assets/usernamechanger/icon.png'
+	from('logo.png') { into 'assets/usernamechanger' }
+}
+
+jar {
+	def projectName = project.name
+	inputs.property "projectName", projectName
+
+	from("LICENSE") {
+		rename { "${it}_$projectName"}
+	}
+}
+
+// configure the maven publication
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			from components.java
+		}
+	}
+
+	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+	repositories {
+		// Add repositories to publish to here.
+		// Notice: This block does NOT have the same function as the block in the top level.
+		// The repositories here will be used for publishing your artifact, not for
+		// retrieving dependencies.
+	}
+}

@@ -1,0 +1,21 @@
+{
+	"required": true,
+	"package": "adminvvv.usernamechanger.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": [
+		"PlayerDisplayMixin",
+		"CommandSourceMixin",
+		"GameProfileArgumentMixin",
+		"PlayerInfoEntryMixin",
+		"PlayerListMixin",
+		"ChunkMapAccessor",
+		"TrackedEntityAccessor",
+		"TeamPacketMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}

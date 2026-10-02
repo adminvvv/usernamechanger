@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "usernamechanger_test",
+  "version": "1.0.0",
+  "name": "Username Changer integration tests",
+  "environment": "server",
+  "mixins": ["usernamechanger-test.mixins.json"],
+  "entrypoints": {
+    "fabric-gametest": ["adminvvv.usernamechanger.NicknameGameTests"]
+  }
+}
