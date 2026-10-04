@@ -93,6 +93,10 @@ public class NicknameGameTests {
             var profileTarget = GameProfileArgument.gameProfile().parse(new StringReader("Comet")).getNames(console).iterator().next();
             check(helper, profileTarget.id().equals(profile.id()), "Profile commands resolved alias to the wrong account");
             check(helper, console.getOnlinePlayerNames().contains("Comet"), "Autocomplete missing nickname");
+            check(helper, !console.getOnlinePlayerNames().contains("NickTestAlice"), "Autocomplete leaked renamed account");
+            var suggestions = commands.getCompletionSuggestions(commands.parse("usernamechange ", console)).join()
+                    .getList().stream().map(com.mojang.brigadier.suggestion.Suggestion::getText).toList();
+            check(helper, suggestions.contains("Comet") && !suggestions.contains("NickTestAlice"), "Command suggestions must use current names");
             boolean removed = false;
             boolean spawned = false;
             Object outbound;
@@ -141,7 +145,71 @@ public class NicknameGameTests {
         helper.succeed();
     }
 
+    @GameTest(maxTicks = 100)
+    public void bedrockNamesAndOfflineSuggestions(GameTestHelper helper) throws Exception {
+        var server = helper.getLevel().getServer();
+        var service = Usernamechanger.service();
+        var profile = new GameProfile(UUID.fromString("00000000-0000-0000-0009-000000000123"), ".Bedrock Player123");
+        var cookie = CommonListenerCookie.createInitial(profile, false);
+        var player = new ServerPlayer(server, helper.getLevel(), profile, cookie.clientInformation());
+        var channel = new EmbeddedChannel(new Connection(PacketFlow.SERVERBOUND));
+        var connection = channel.pipeline().get(Connection.class);
+        server.getPlayerList().placeNewPlayer(connection, player, cookie);
+        var console = server.createCommandSourceStack();
+        var commands = server.getCommands().getDispatcher();
+        try {
+            commands.execute("usernamereset " + profile.id(), console);
+            var suggestions = commands.getCompletionSuggestions(commands.parse("usernamechange ", console)).join()
+                    .getList().stream().map(com.mojang.brigadier.suggestion.Suggestion::getText).toList();
+            check(helper, suggestions.contains("\".Bedrock Player123\""), "Bedrock names must be quoted in suggestions");
+            check(helper, commands.execute("usernamechange \".Bedrock Player123\" BedrockNick", console) == 1, "Quoted Bedrock target failed");
+            check(helper, player.getGameProfile().equals(profile), "Bedrock account identity changed");
+            check(helper, server.getPlayerList().getPlayerByName("BedrockNick") == player, "Bedrock nickname target failed");
+            var persisted = new adminvvv.usernamechanger.storage.NicknameStore(server.getWorldPath(
+                    net.minecraft.world.level.storage.LevelResource.ROOT).resolve("usernamechanger.json"));
+            check(helper, "BedrockNick".equals(persisted.nickname(profile.id())), "Bedrock nickname failed to reload");
+            server.getPlayerList().remove(player);
+            check(helper, !service.knownNames().contains("BedrockNick") && !service.knownNames().contains(profile.name()),
+                    "Offline renamed player must not appear in suggestions");
+            check(helper, commands.execute("usernamereset BedrockNick", console) == 1, "Hidden offline nickname must still resolve");
+            check(helper, service.knownNames().contains(profile.name()), "Offline unnamed account must appear");
+            check(helper, commands.execute("usernamechange \".Bedrock Player123\" BedrockNick", console) == 1,
+                    "Offline Bedrock account could not be renamed");
+            commands.execute("usernamereset " + profile.id(), console);
+        } finally {
+            if (server.getPlayerList().getPlayer(profile.id()) == player) server.getPlayerList().remove(player);
+            channel.finishAndReleaseAll();
+        }
+        helper.succeed();
+    }
+
     private static void check(GameTestHelper helper, boolean condition, String message) {
         helper.assertTrue(condition, Component.literal(message));
+    }
+
+    @GameTest(maxTicks = 100)
+    public void reloadImportsCachedOfflinePlayers(GameTestHelper helper) throws Exception {
+        var cache = net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir().resolve("usercache.json");
+        byte[] original = java.nio.file.Files.exists(cache) ? java.nio.file.Files.readAllBytes(cache) : null;
+        UUID id = UUID.randomUUID();
+        String name = "Cache" + id.toString().substring(0, 8);
+        var server = helper.getLevel().getServer();
+        var console = server.createCommandSourceStack();
+        var commands = server.getCommands().getDispatcher();
+        try {
+            java.nio.file.Files.writeString(cache, "[{\"uuid\":\"" + id + "\",\"name\":\"" + name + "\"}]");
+            check(helper, commands.execute("usernamechanger reload", console) == 1, "Cache reload failed");
+            check(helper, Usernamechanger.service().knownNames().contains(name), "Cached offline player missing from suggestions");
+            check(helper, commands.execute("usernamechange " + name + " CacheNickname", console) == 1,
+                    "Imported offline player could not be renamed");
+            commands.execute("usernamechanger reload", console);
+            check(helper, "CacheNickname".equals(Usernamechanger.service().nickname(id)), "Reload overwrote imported player's nickname");
+            check(helper, !Usernamechanger.service().knownNames().contains(name), "Renamed offline account still suggested");
+            commands.execute("usernamereset " + id, console);
+        } finally {
+            if (original == null) java.nio.file.Files.deleteIfExists(cache);
+            else java.nio.file.Files.write(cache, original);
+        }
+        helper.succeed();
     }
 }

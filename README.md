@@ -4,7 +4,7 @@ A server-side Fabric mod for Minecraft 26.1 through 26.3, including dedicated se
 
 ## Installation
 
-Use Java 25+, Fabric Loader 0.19.5+, and the Fabric API release for your Minecraft version. Put `usernamechanger-1.0.1.jar` in the server's (or single-player host's) `mods` directory. Replace the old jar rather than keeping both versions. LuckPerms is optional; install its Fabric build for your server version to use permission nodes.
+Use Java 25+, Fabric Loader 0.19.5+, and the Fabric API release for your Minecraft version. Put `usernamechanger-1.0.2.jar` in the server's (or single-player host's) `mods` directory. Replace the old jar rather than keeping both versions. LuckPerms is optional; install its Fabric build for your server version to use permission nodes.
 
 The supplied `logo.png` is packaged as the mod icon in the release and sources jars.
 
@@ -14,11 +14,17 @@ The supplied `logo.png` is packaged as the mod icon in the release and sources j
 | --- | --- |
 | `/usernamechange <player> <nickname>` | Set or replace a nickname. |
 | `/usernamereset <player>` | Restore the account name. |
-| `/usernamechanger reload` | Reload configuration and refresh command visibility. |
+| `/usernamechanger reload` | Reload configuration, import missing cached players, and refresh command visibility. |
 
-`<player>` accepts an account name, nickname, or UUID of a player seen since the mod was installed, including offline players. Nicknames use 1-16 ASCII letters, digits, or underscores. Spaces, colors, and formatting codes are not supported because vanilla player profiles have these limits.
+`<player>` accepts an account name, nickname, or UUID of a known player, including offline players imported from `usercache.json`. Nicknames use 1-16 ASCII letters, digits, or underscores. Spaces, colors, and formatting codes are not supported because vanilla player profiles have these limits.
 
 Names are checked without regard to case. Nicknames cannot take another known account name or stored nickname. If a new player joins with an account name already used as a nickname, that nickname is suspended and the real account takes priority. Change or reset the suspended nickname to resolve it.
+
+Change/reset suggestions show online players by their current nickname (or account name if unnamed), plus known offline players without a nickname. Offline nicknamed players are hidden from suggestions but remain targetable by their current nickname, account name, or UUID. Generic online-player suggestions contain only current display names, not old aliases or renamed account names.
+
+### Bedrock / Geyser
+
+Geyser/Floodgate account names, including configurable prefixes, spaces, and names longer than 16 characters, are preserved under their original server UUID. No Floodgate API dependency or client mod is required. Quote account names containing spaces, for example `/usernamechange ".Bedrock Player" Comet`. Suggestions insert quotes when needed. Nicknames retain the 1-16 character restriction; use the nickname for vanilla command targets whose parsers cannot accept the original account name. Authentication and account linking remain Geyser/Floodgate's responsibility.
 
 ## What Changes
 
@@ -64,7 +70,11 @@ For players who are neither operators nor the world owner, `useLuckPerms: true` 
 
 ## Persistence
 
+On startup and `/usernamechanger reload`, the mod reads `usercache.json` from the server/host game directory (alongside `mods`, not inside the world). Missing UUIDs are imported into the world's nickname store so cached offline players are immediately available to rename. Existing records and nicknames take priority over potentially stale cache names; joining updates the real account name. Cache expiry dates do not prevent this local import, and no account lookup is performed. The cache itself is never modified. Invalid entries are skipped with a warning; a missing or unreadable cache does not prevent startup. Only players still present in the cache or already known to the mod can be imported.
+
 Nicknames and last-seen account names are stored by UUID in `<world>/usernamechanger.json`. Every change is written before success is reported, using a flushed temporary file and an atomic replacement when the filesystem supports it. Back up this file with the world. Do not edit it while the server is running. Malformed storage stops mod startup instead of overwriting the existing file.
+
+Invalid or conflicting saved nicknames are suspended with a warning instead of preventing startup. The original records remain intact; affected players use their account names until the conflict is resolved. Use `/usernamereset <UUID>` or assign a valid nickname to repair a record. Loading alone never rewrites the file. Version 1.0.2 also fixes restart failures caused by prefixed Bedrock account names stored by earlier versions.
 
 ## Building And Testing
 
@@ -92,6 +102,8 @@ To check another version, pass both properties, for example:
 ```
 
 CI runs this matrix. Unit tests cover restart persistence, collisions, failed writes, configuration, and LuckPerms API decisions; Fabric Loader tests apply every mixin in both server and client environments. Headless game tests exercise command visibility/execution for operators and a simulated world owner with cheats disabled, guest denial, identity preservation, team packets, tracking-viewer refresh, reconnect, and reset using embedded connections. A final visual check with vanilla clients and a live LuckPerms installation is still recommended; embedded tests do not render nametags or authenticate signed chat clients.
+
+Bedrock regression tests use simulated Floodgate-style profiles and embedded server connections to check quoting, offline suggestions, identity preservation, and storage reload. A live Geyser/Bedrock client visual check is still needed to verify its translated tab list and nametags.
 
 ## Porting
 

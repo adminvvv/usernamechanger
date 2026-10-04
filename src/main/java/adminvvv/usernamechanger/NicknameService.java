@@ -29,6 +29,25 @@ public final class NicknameService {
         this.configPath = configPath;
         this.config = config;
         store = new NicknameStore(server.getWorldPath(LevelResource.ROOT).resolve("usernamechanger.json"));
+        importUserCache();
+    }
+
+    private void importUserCache() {
+        Map<ServerPlayer, String> before = new LinkedHashMap<>();
+        // SERVER_STARTING can run before the dedicated server has created its player list.
+        if (server.getPlayerList() != null) {
+            for (ServerPlayer online : server.getPlayerList().getPlayers()) before.put(online, visibleName(online));
+        }
+        Path cache = net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir().resolve("usercache.json");
+        try {
+            int imported = store.importUserCache(cache);
+            if (imported > 0) Usernamechanger.LOGGER.info("Imported {} known players from {}", imported, cache);
+        } catch (IOException e) {
+            Usernamechanger.LOGGER.warn("Could not import {}; existing nickname records are unchanged", cache, e);
+        }
+        before.forEach((online, oldName) -> {
+            if (!oldName.equals(visibleName(online))) PlayerPresentation.refresh(server, online, oldName);
+        });
     }
 
     public String nickname(UUID id) { return store.nickname(id); }
@@ -75,20 +94,15 @@ public final class NicknameService {
         return id == null ? null : new net.minecraft.server.players.NameAndId(id, store.entries().get(id).accountName());
     }
 
-    public String[] suggestions(String[] originals) {
-        var names = new LinkedHashSet<String>(java.util.List.of(originals));
+    public String[] suggestions() {
+        var names = new LinkedHashSet<String>();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) names.add(visibleName(player));
         return names.toArray(String[]::new);
     }
 
     public java.util.Collection<String> knownNames() {
-        var names = new LinkedHashSet<String>();
-        store.entries().forEach((id, entry) -> {
-            names.add(entry.accountName());
-            String nickname = nickname(id);
-            if (nickname != null) names.add(nickname);
-        });
-        return names;
+        return store.currentNames(server.getPlayerList().getPlayers().stream()
+                .map(ServerPlayer::getUUID).collect(java.util.stream.Collectors.toSet()));
     }
 
     public boolean allowed(CommandSourceStack source, String action) {
@@ -109,6 +123,8 @@ public final class NicknameService {
         ServerPlayer player = server.getPlayerList().getPlayer(id);
         String account = store.entries().get(id).accountName();
         String oldVisible = player == null ? teamEntry(account) : visibleName(player);
+        Map<ServerPlayer, String> before = new LinkedHashMap<>();
+        for (ServerPlayer online : server.getPlayerList().getPlayers()) before.put(online, visibleName(online));
         try {
             store.set(id, nickname);
         } catch (IOException e) {
@@ -117,6 +133,11 @@ public final class NicknameService {
         }
         if (player != null) PlayerPresentation.refresh(server, player, oldVisible);
         else PlayerPresentation.refreshTeam(server, account, oldVisible, teamEntry(account));
+        before.forEach((online, oldName) -> {
+            if (online != player && !oldName.equals(visibleName(online))) {
+                PlayerPresentation.refresh(server, online, oldName);
+            }
+        });
         source.sendSuccess(() -> nickname == null ? message("reset", "player", account)
                 : message("changed", "player", account, "nickname", nickname), true);
         Usernamechanger.LOGGER.info("{} changed nickname for {} ({}) to {}", source.getTextName(), account, id, nickname);
@@ -132,6 +153,7 @@ public final class NicknameService {
             Usernamechanger.LOGGER.error("Could not reload configuration", e);
             return fail(source, "reloadFailed");
         }
+        importUserCache();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) server.getCommands().sendCommands(player);
         source.sendSuccess(() -> message("reloaded"), false);
         return 1;

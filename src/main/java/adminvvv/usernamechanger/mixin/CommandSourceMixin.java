@@ -14,7 +14,7 @@ public abstract class CommandSourceMixin {
     @Inject(method = "getOnlinePlayerNames", at = @At("RETURN"), cancellable = true)
     private void usernamechanger$suggestions(CallbackInfoReturnable<Collection<String>> cir) {
         if (Usernamechanger.service() != null) {
-            cir.setReturnValue(List.of(Usernamechanger.service().suggestions(cir.getReturnValue().toArray(String[]::new))));
+            cir.setReturnValue(List.of(Usernamechanger.service().suggestions()));
         }
     }
 }
